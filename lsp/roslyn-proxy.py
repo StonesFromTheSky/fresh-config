@@ -64,11 +64,13 @@ TOKEN_TYPE_MAP = {
     "functionPointer": "type",
     "pointer": "type",
     "module": "namespace",
-    # Fresh красит parameter/variable/property одним цветом syntax.variable;
-    # чтобы поля и свойства были голубыми, как в Rider, отдаём их как number
-    # (цвет syntax.constant, задаётся в теме hc-diagnostics).
+    # Fresh красит parameter/variable/property/enumMember одним цветом
+    # syntax.variable; чтобы поля, свойства и члены перечислений были голубыми,
+    # как в Rider, отдаём их как number (цвет syntax.constant, задаётся в теме
+    # hc-diagnostics).
     "field": "number",
     "property": "number",
+    "enumMember": "number",
     "constant": "number",
     "label": "variable",
     "extensionMethod": "method",
