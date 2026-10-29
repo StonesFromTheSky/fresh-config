@@ -8,6 +8,7 @@
   "keybindings": [
     { "key": "Left", "modifiers": ["ctrl"], "action": "prev_buffer", "when": "normal" },
     { "key": "Right", "modifiers": ["ctrl"], "action": "next_buffer", "when": "normal" },
+    { "key": "Tab", "modifiers": ["alt"], "action": "quick_open_buffers", "when": "global" },
     { "key": "`", "modifiers": ["ctrl"], "action": "open_terminal_in_dock", "when": "normal" },
     { "key": "Enter", "modifiers": ["shift"], "action": "insert_line_below", "when": "normal" },
     { "key": "Enter", "modifiers": ["ctrl", "shift"], "action": "insert_line_above", "when": "normal" },
