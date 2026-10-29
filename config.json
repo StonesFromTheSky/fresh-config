@@ -1,0 +1,56 @@
+{
+  "active_keybinding_map": "macos",
+  "check_for_updates": false,
+  "theme": "hc-diagnostics.json",
+  "editor": {
+    "diagnostics_inline_text": false
+  },
+  "keybindings": [
+    { "key": "Left", "modifiers": ["ctrl"], "action": "prev_buffer", "when": "normal" },
+    { "key": "Right", "modifiers": ["ctrl"], "action": "next_buffer", "when": "normal" },
+    { "key": "`", "modifiers": ["ctrl"], "action": "open_terminal_in_dock", "when": "normal" },
+    { "key": "Enter", "modifiers": ["shift"], "action": "insert_line_below", "when": "normal" },
+    { "key": "Enter", "modifiers": ["ctrl", "shift"], "action": "insert_line_above", "when": "normal" },
+
+    { "key": "-", "modifiers": ["ctrl"], "action": "nav_back", "when": "normal" },
+    { "key": "=", "modifiers": ["ctrl"], "action": "nav_forward", "when": "normal" },
+    { "key": ".", "modifiers": ["ctrl"], "action": "nav_goto_definition", "when": "normal" },
+    { "key": "F12", "modifiers": [], "action": "nav_goto_definition", "when": "normal" },
+    { "key": "F12", "modifiers": ["ctrl"], "action": "nav_goto_implementation", "when": "normal" },
+    { "key": ",", "modifiers": ["ctrl"], "action": "nav_find_references", "when": "normal" },
+    { "key": "F12", "modifiers": ["shift"], "action": "nav_find_references", "when": "normal" },
+    { "key": "o", "modifiers": ["ctrl", "shift"], "action": "nav_goto_symbol", "when": "normal" },
+    { "key": "F2", "modifiers": ["super"], "action": "nav_goto_symbol", "when": "normal" },
+    { "key": "l", "modifiers": ["ctrl"], "action": "nav_goto_line", "when": "normal" },
+    { "key": "/", "modifiers": ["alt"], "action": "nav_live_grep", "when": "normal" },
+    { "key": " ", "modifiers": ["ctrl", "shift"], "action": "lsp_signature_help", "when": "normal" }
+  ],
+  "lsp": {
+    "csharp": [
+      {
+        "name": "roslyn",
+        "command": "/usr/bin/python3",
+        "args": [
+          "-I", "/Users/kanea/.config/fresh/lsp/roslyn-proxy.py", "--",
+          "/Users/kanea/.dotnet/tools/roslyn-language-server",
+          "--stdio",
+          "--autoLoadProjects",
+          "--logLevel", "Information",
+          "--extensionLogDirectory", "/Users/kanea/.local/state/fresh/logs/roslyn"
+        ],
+        "auto_start": true,
+        "root_markers": [".git"]
+      }
+    ]
+  },
+  "plugins": {
+    "csharp_support": {
+      "enabled": false
+    },
+    "orchestrator": {
+      "settings": {
+        "autoOpenDock": "never"
+      }
+    }
+  }
+}

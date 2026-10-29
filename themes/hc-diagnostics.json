@@ -1,0 +1,15 @@
+{
+  "name": "hc-diagnostics",
+  "extends": "builtin://high-contrast",
+  "diagnostic": {
+    "info_bg": [0, 27, 12]
+  },
+  "ui": {
+    "semantic_highlight_bg": [45, 45, 45]
+  },
+  "syntax": {
+    "comment": [133, 196, 108],
+    "string": [215, 158, 85],
+    "constant": [102, 178, 255]
+  }
+}
