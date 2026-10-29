@@ -35,14 +35,29 @@ LSP в легенде (initialize / client/registerCapability); индексы �
 &nbsp; (например, перед текстом <returns>), а Fresh её не понимает. Прокси
 заменяет её на символ неразрывного пробела в ответах на эти запросы.
 
+Шестая: пока у проекта нет полной информации (загрузка, перезагрузка после
+restore), Roslyn на запрос семантической подсветки отвечает пустым списком и
+сам потом refresh не присылает. Fresh применяет пустой ответ — цвета в видимой
+области слетают до грамматических — и считает область обновлённой, так что не
+переспрашивает до правки или прокрутки. Прокси отвечает Fresh вместо пустого
+списка ошибкой ContentModified (старые цвета остаются) и через пару секунд сам
+шлёт ему workspace/semanticTokens/refresh.
+
+Седьмая: в конце декомпилированного файла Roslyn оставляет журнал декомпиляции
+(блок `#if false // …` … `#endif`). Прокси вырезает его из файла на диске, когда
+файл появляется в ответе сервера, — до того, как Fresh его откроет. Журнал
+стоит в самом конце, так что позиции остального кода не сдвигаются.
+
 Запуск: roslyn-proxy.py -- roslyn-language-server --stdio ...
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
+from urllib.parse import unquote
 
 docs = {}
 
@@ -160,9 +175,59 @@ DOC_METHODS = {"textDocument/hover", "textDocument/signatureHelp"}
 doc_request_ids = set()  # id запросов hover/signatureHelp, ждущих ответа
 code_action_request_ids = set()  # id запросов textDocument/codeAction
 
+SEMANTIC_METHODS = {"textDocument/semanticTokens/range", "textDocument/semanticTokens/full"}
+SEMANTIC_RETRY_DELAY = 2.0  # секунды до повторного запроса подсветки
+SEMANTIC_MAX_RETRIES = 30  # сколько раз подряд сами переспрашиваем (около минуты)
+CONTENT_MODIFIED = -32801
+semantic_request_uris = {}  # id запроса подсветки -> uri документа
+semantic_empty_count = {}  # uri -> сколько пустых ответов подряд
+
+
+def is_empty_semantic_result(msg):
+    if "error" in msg:
+        return False
+    result = msg.get("result")
+    return result is None or not (result.get("data") if isinstance(result, dict) else None)
+
+
+DECOMPILED_DIR = "/MetadataAsSource/"
+DECOMPILATION_LOG = re.compile(rb"(\r?\n)(?:[ \t]*\r?\n)*[ \t]*#if false //[^\r\n]*\r?\n.*?#endif\s*\Z", re.S)
+
+
+def file_uris(value):
+    if isinstance(value, str):
+        if value.startswith("file://"):
+            yield value
+    elif isinstance(value, list):
+        for v in value:
+            yield from file_uris(v)
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from file_uris(v)
+
+
+def strip_decompilation_log(uri):
+    path = unquote(uri[len("file://"):])
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        stripped = DECOMPILATION_LOG.sub(lambda m: m.group(1), data)
+        if stripped != data:
+            mode = os.stat(path).st_mode  # Roslyn создаёт файл только для чтения
+            os.chmod(path, mode | 0o200)
+            try:
+                with open(path, "wb") as f:
+                    f.write(stripped)
+            finally:
+                os.chmod(path, mode)
+    except OSError as e:
+        sys.stderr.write("roslyn-proxy: %s\n" % e)
+
+
 out_lock = threading.Lock()
 refresh_timer = None
 refresh_seq = 0
+semantic_refresh_timer = None
 
 
 def read_message(stream):
@@ -260,6 +325,40 @@ def schedule_diagnostic_refresh():
     refresh_timer.start()
 
 
+def request_semantic_refresh():
+    global refresh_seq
+    refresh_seq += 1
+    send_to_client(json.dumps({
+        "jsonrpc": "2.0",
+        "id": "%s%d" % (PROXY_ID_PREFIX, refresh_seq),
+        "method": "workspace/semanticTokens/refresh",
+    }).encode("utf-8"))
+
+
+def schedule_semantic_refresh():
+    global semantic_refresh_timer
+    if semantic_refresh_timer is not None:
+        semantic_refresh_timer.cancel()
+    semantic_refresh_timer = threading.Timer(SEMANTIC_RETRY_DELAY, request_semantic_refresh)
+    semantic_refresh_timer.daemon = True
+    semantic_refresh_timer.start()
+
+
+def fix_semantic_response(msg, uri):
+    """Пустой ответ подсветки -> ContentModified и повтор позже; True, если сообщение заменено."""
+    if not is_empty_semantic_result(msg):
+        semantic_empty_count.pop(uri, None)
+        return False
+    count = semantic_empty_count.get(uri, 0) + 1
+    semantic_empty_count[uri] = count
+    msg.pop("result", None)
+    msg["error"] = {"code": CONTENT_MODIFIED, "message": "roslyn-proxy: проект ещё не загружен, подсветка позже"}
+    # Сами переспрашиваем ограниченное число раз; дальше ждём refresh от Roslyn.
+    if count <= SEMANTIC_MAX_RETRIES:
+        schedule_semantic_refresh()
+    return True
+
+
 def is_proxy_response(msg):
     msg_id = msg.get("id")
     return "method" not in msg and isinstance(msg_id, str) and msg_id.startswith(PROXY_ID_PREFIX)
@@ -292,6 +391,14 @@ def main():
                     if "&nbsp;" in json.dumps(msg.get("result"), ensure_ascii=False):
                         msg["result"] = replace_in_strings(msg.get("result"), "&nbsp;", " ")
                         body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
+                if "method" not in msg and json.dumps(msg.get("id")) in semantic_request_uris:
+                    uri = semantic_request_uris.pop(json.dumps(msg.get("id")))
+                    if fix_semantic_response(msg, uri):
+                        body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
+                if "method" not in msg and DECOMPILED_DIR.encode() in body:
+                    for uri in set(file_uris(msg.get("result"))):
+                        if DECOMPILED_DIR in uri and uri.endswith(".cs"):
+                            strip_decompilation_log(uri)
             except Exception as e:
                 sys.stderr.write("roslyn-proxy: %s\n" % e)
             send_to_client(body)
@@ -317,6 +424,9 @@ def main():
                 doc_request_ids.add(json.dumps(msg["id"]))
             if msg.get("method") == "textDocument/codeAction" and "id" in msg:
                 code_action_request_ids.add(json.dumps(msg["id"]))
+            if msg.get("method") in SEMANTIC_METHODS and "id" in msg:
+                uri = ((msg.get("params") or {}).get("textDocument") or {}).get("uri")
+                semantic_request_uris[json.dumps(msg["id"])] = uri
             if fix(msg):
                 body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
         except Exception as e:  # прокси не должен ронять сессию
