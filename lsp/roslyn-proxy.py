@@ -44,9 +44,11 @@ restore), Roslyn на запрос семантической подсветки
 шлёт ему workspace/semanticTokens/refresh.
 
 Седьмая: в конце декомпилированного файла Roslyn оставляет журнал декомпиляции
-(блок `#if false // …` … `#endif`). Прокси вырезает его из файла на диске, когда
-файл появляется в ответе сервера, — до того, как Fresh его откроет. Журнал
-стоит в самом конце, так что позиции остального кода не сдвигаются.
+(блок `#if false // …` … `#endif`), а добавленные им using пишет с CRLF среди
+строк с LF — Fresh показывает лишние \r как <0D>. Прокси вырезает журнал и
+выравнивает концы строк в файле на диске, когда файл появляется в ответе
+сервера, — до того, как Fresh его откроет. Журнал стоит в самом конце, а концы
+строк в LSP-позиции не входят, так что позиции кода не сдвигаются.
 
 Запуск: roslyn-proxy.py -- roslyn-language-server --stdio ...
 """
@@ -206,12 +208,21 @@ def file_uris(value):
             yield from file_uris(v)
 
 
-def strip_decompilation_log(uri):
+def clean_decompiled_text(data):
+    """Убирает журнал декомпиляции и приводит концы строк к преобладающим."""
+    data = DECOMPILATION_LOG.sub(lambda m: m.group(1), data)
+    crlf = data.count(b"\r\n")
+    if crlf * 2 < data.count(b"\n"):
+        return data.replace(b"\r\n", b"\n")
+    return re.sub(rb"(?<!\r)\n", b"\r\n", data)
+
+
+def clean_decompiled_file(uri):
     path = unquote(uri[len("file://"):])
     try:
         with open(path, "rb") as f:
             data = f.read()
-        stripped = DECOMPILATION_LOG.sub(lambda m: m.group(1), data)
+        stripped = clean_decompiled_text(data)
         if stripped != data:
             mode = os.stat(path).st_mode  # Roslyn создаёт файл только для чтения
             os.chmod(path, mode | 0o200)
@@ -398,7 +409,7 @@ def main():
                 if "method" not in msg and DECOMPILED_DIR.encode() in body:
                     for uri in set(file_uris(msg.get("result"))):
                         if DECOMPILED_DIR in uri and uri.endswith(".cs"):
-                            strip_decompilation_log(uri)
+                            clean_decompiled_file(uri)
             except Exception as e:
                 sys.stderr.write("roslyn-proxy: %s\n" % e)
             send_to_client(body)
