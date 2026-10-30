@@ -170,13 +170,43 @@ def flatten_code_actions(actions):
             path = ((action.get("data") or {}).get("CodeActionPath") or []) if isinstance(action, dict) else []
             if len(path) > 2:
                 action["title"] = " → ".join(path[1:])
+            if isinstance(action, dict) and isinstance(action.get("title"), str):
+                action["title"] = compact_title(action["title"])
             out.append(action)
     return out
 
 
+# Окно code actions во Fresh шириной 60 колонок и не растягивается, поэтому
+# длинные пункты меню подавления/настройки Roslyn (русская локализация)
+# сокращаем, сохраняя смысл.
+COMPACT_TITLES = (
+    (re.compile(r'^Настройка серьезности для всех анализаторов \("?(.+?)"?\) → '), r"Уровень категории \1: "),
+    (re.compile(r"^Настройка серьезности для всех анализаторов → "), "Уровень всех анализаторов: "),
+    (re.compile(r"^Настройка серьезности (\S+) → "), r"Уровень \1: "),
+    (re.compile(r"^Настройка стиля кода (\S+) → (?:csharp_|dotnet_)?(?:style_)?(\S+) → (\S+)$"), r"Стиль \1: \2 = \3"),
+    (re.compile(r"^Скрыть (\S+) → в исходном$"), r"Скрыть \1: #pragma"),
+    (re.compile(r"^Скрыть (\S+) → в файле подавляемых предупреждений$"), r"Скрыть \1: в GlobalSuppressions.cs"),
+    (re.compile(r"^Скрыть (\S+) → в источнике \(атрибут\)$"), r"Скрыть \1: атрибутом"),
+)
+
+
+def compact_title(title):
+    for pattern, replacement in COMPACT_TITLES:
+        title = pattern.sub(replacement, title)
+    return title
+
+
+def drop_kinds(actions):
+    """Fresh выводит kind (quickfix, refactor…) справа от пункта, отнимая место у названия."""
+    for action in actions:
+        # У голой Command поле command — строка; у CodeAction — объект или его нет.
+        if isinstance(action, dict) and not isinstance(action.get("command"), str):
+            action.pop("kind", None)
+
+
 DOC_METHODS = {"textDocument/hover", "textDocument/signatureHelp"}
 doc_request_ids = set()  # id запросов hover/signatureHelp, ждущих ответа
-code_action_request_ids = set()  # id запросов textDocument/codeAction
+code_action_request_ids = {}  # id запроса textDocument/codeAction -> был ли в нём фильтр context.only
 
 SEMANTIC_METHODS = {"textDocument/semanticTokens/range", "textDocument/semanticTokens/full"}
 SEMANTIC_RETRY_DELAY = 1.5  # секунды между повторами пустого запроса подсветки
@@ -421,9 +451,11 @@ def main():
                 if fix_server_message(msg):
                     body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
                 if "method" not in msg and json.dumps(msg.get("id")) in code_action_request_ids:
-                    code_action_request_ids.discard(json.dumps(msg.get("id")))
+                    filtered = code_action_request_ids.pop(json.dumps(msg.get("id")))
                     if isinstance(msg.get("result"), list):
                         msg["result"] = flatten_code_actions(msg["result"])
+                        if not filtered:  # запросы с фильтром по kind (организация using и т. п.) не трогаем
+                            drop_kinds(msg["result"])
                         body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
                 if "method" not in msg and json.dumps(msg.get("id")) in doc_request_ids:
                     doc_request_ids.discard(json.dumps(msg.get("id")))
@@ -464,7 +496,8 @@ def main():
             if msg.get("method") in DOC_METHODS and "id" in msg:
                 doc_request_ids.add(json.dumps(msg["id"]))
             if msg.get("method") == "textDocument/codeAction" and "id" in msg:
-                code_action_request_ids.add(json.dumps(msg["id"]))
+                only = ((msg.get("params") or {}).get("context") or {}).get("only")
+                code_action_request_ids[json.dumps(msg["id"])] = bool(only)
             if msg.get("method") in SEMANTIC_METHODS and "id" in msg:
                 with held_lock:
                     held_semantic[json.dumps(msg["id"])] = {"request": msg, "retries": 0}
