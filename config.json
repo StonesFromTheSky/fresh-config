@@ -25,7 +25,8 @@
     { "key": "F2", "modifiers": ["super"], "action": "nav_goto_symbol", "when": "normal" },
     { "key": "l", "modifiers": ["ctrl"], "action": "nav_goto_line", "when": "normal" },
     { "key": "/", "modifiers": ["alt"], "action": "nav_live_grep", "when": "normal" },
-    { "key": " ", "modifiers": ["ctrl", "shift"], "action": "lsp_signature_help", "when": "normal" }
+    { "key": " ", "modifiers": ["ctrl", "shift"], "action": "lsp_signature_help", "when": "normal" },
+    { "key": "v", "modifiers": ["ctrl", "shift"], "action": "md_preview", "when": "normal" }
   ],
   "lsp": {
     "csharp": [

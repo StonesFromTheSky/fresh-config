@@ -11,6 +11,8 @@
   - `nav_history.ts` — история переходов как в Rider (Ctrl+- / Ctrl+=) и обёртки навигации;
   - `new_line.ts` — новая строка ниже / выше (Shift+Enter / Ctrl+Shift+Enter);
   - `error_lens.ts` — текст ошибок (только Error) у правого края строки;
+  - `new_folder.ts` — команда `New Folder`: создать папку без проводника;
+  - `md_preview.ts` — `.md` в просмотрщике cmux (Ctrl+Shift+V);
   - `csharp_decompiled.ts` — декомпиляция для `csharp-ls` (запасной сервер).
 - `themes/hc-diagnostics.json` — тема на основе `high-contrast`: цвета диагностики, комментариев, строк, полей.
 - `types/`, `tsconfig.json` — типы API плагинов, создаёт сам Fresh. После обновления Fresh `git diff types/` показывает изменения API.
