@@ -39,9 +39,10 @@ LSP в легенде (initialize / client/registerCapability); индексы �
 restore), Roslyn на запрос семантической подсветки отвечает пустым списком и
 сам потом refresh не присылает. Fresh применяет пустой ответ — цвета в видимой
 области слетают до грамматических — и считает область обновлённой, так что не
-переспрашивает до правки или прокрутки. Прокси отвечает Fresh вместо пустого
-списка ошибкой ContentModified (старые цвета остаются) и через пару секунд сам
-шлёт ему workspace/semanticTokens/refresh.
+переспрашивает до правки или прокрутки. Прокси придерживает пустой ответ и
+каждые полторы секунды повторяет запрос к Roslyn, пока не придут токены (до
+минуты); Fresh получает один ответ, просто позже. Отмену такого запроса прокси
+отрабатывает сам.
 
 Седьмая: в конце декомпилированного файла Roslyn оставляет журнал декомпиляции
 (блок `#if false // …` … `#endif`), а добавленные им using пишет с CRLF среди
@@ -178,11 +179,12 @@ doc_request_ids = set()  # id запросов hover/signatureHelp, ждущих
 code_action_request_ids = set()  # id запросов textDocument/codeAction
 
 SEMANTIC_METHODS = {"textDocument/semanticTokens/range", "textDocument/semanticTokens/full"}
-SEMANTIC_RETRY_DELAY = 2.0  # секунды до повторного запроса подсветки
-SEMANTIC_MAX_RETRIES = 30  # сколько раз подряд сами переспрашиваем (около минуты)
-CONTENT_MODIFIED = -32801
-semantic_request_uris = {}  # id запроса подсветки -> uri документа
-semantic_empty_count = {}  # uri -> сколько пустых ответов подряд
+SEMANTIC_RETRY_DELAY = 1.5  # секунды между повторами пустого запроса подсветки
+SEMANTIC_MAX_RETRIES = 40  # около минуты, дальше отдаём пустой ответ как есть
+REQUEST_CANCELLED = -32800
+held_semantic = {}  # id запроса клиента (json) -> {"request": запрос, "retries": число повторов}
+semantic_retry_ids = {}  # id нашего повтора -> id запроса клиента (json)
+held_lock = threading.Lock()
 
 
 def is_empty_semantic_result(msg):
@@ -238,7 +240,8 @@ def clean_decompiled_file(uri):
 out_lock = threading.Lock()
 refresh_timer = None
 refresh_seq = 0
-semantic_refresh_timer = None
+server_lock = threading.Lock()
+server_stdin = None
 
 
 def read_message(stream):
@@ -336,37 +339,61 @@ def schedule_diagnostic_refresh():
     refresh_timer.start()
 
 
-def request_semantic_refresh():
+def send_to_server(body):
+    with server_lock:
+        write_message(server_stdin, body)
+
+
+def resend_semantic(key):
     global refresh_seq
-    refresh_seq += 1
+    with held_lock:
+        held = held_semantic.get(key)
+        if held is None:
+            return  # клиент успел отменить запрос
+        refresh_seq += 1
+        retry_id = "%sst-%d" % (PROXY_ID_PREFIX, refresh_seq)
+        semantic_retry_ids[retry_id] = key
+        request = dict(held["request"], id=retry_id)
+    try:
+        send_to_server(json.dumps(request, ensure_ascii=False).encode("utf-8"))
+    except (BrokenPipeError, ValueError):
+        pass
+
+
+def handle_semantic_response(msg):
+    """Ответ на запрос подсветки (свой или наш повтор) -> что отдать клиенту; None — придержать."""
+    msg_id = msg.get("id")
+    with held_lock:
+        key = semantic_retry_ids.pop(msg_id, None) if isinstance(msg_id, str) else None
+        if key is None:
+            key = json.dumps(msg_id)
+        held = held_semantic.get(key)
+        if held is None:
+            return None  # повтор отменённого запроса
+        if is_empty_semantic_result(msg) and held["retries"] < SEMANTIC_MAX_RETRIES:
+            held["retries"] += 1
+            timer = threading.Timer(SEMANTIC_RETRY_DELAY, resend_semantic, (key,))
+            timer.daemon = True
+            timer.start()
+            return None
+        del held_semantic[key]
+    msg["id"] = held["request"]["id"]
+    return msg
+
+
+def cancel_held_semantic(msg):
+    """$/cancelRequest для придержанного запроса: отвечаем клиенту сами; True — серверу не пересылать."""
+    key = json.dumps((msg.get("params") or {}).get("id"))
+    with held_lock:
+        held = held_semantic.get(key)
+        if held is None or held["retries"] == 0:
+            return False  # запрос ещё у сервера — пусть отменяет он
+        del held_semantic[key]
     send_to_client(json.dumps({
         "jsonrpc": "2.0",
-        "id": "%s%d" % (PROXY_ID_PREFIX, refresh_seq),
-        "method": "workspace/semanticTokens/refresh",
+        "id": held["request"]["id"],
+        "error": {"code": REQUEST_CANCELLED, "message": "roslyn-proxy: запрос отменён"},
     }).encode("utf-8"))
-
-
-def schedule_semantic_refresh():
-    global semantic_refresh_timer
-    if semantic_refresh_timer is not None:
-        semantic_refresh_timer.cancel()
-    semantic_refresh_timer = threading.Timer(SEMANTIC_RETRY_DELAY, request_semantic_refresh)
-    semantic_refresh_timer.daemon = True
-    semantic_refresh_timer.start()
-
-
-def fix_semantic_response(msg, uri):
-    """Пустой ответ подсветки -> ContentModified и повтор позже; True, если сообщение заменено."""
-    if not is_empty_semantic_result(msg):
-        semantic_empty_count.pop(uri, None)
-        return False
-    count = semantic_empty_count.get(uri, 0) + 1
-    semantic_empty_count[uri] = count
-    msg.pop("result", None)
-    msg["error"] = {"code": CONTENT_MODIFIED, "message": "roslyn-proxy: проект ещё не загружен, подсветка позже"}
-    # Сами переспрашиваем ограниченное число раз; дальше ждём refresh от Roslyn.
-    if count <= SEMANTIC_MAX_RETRIES:
-        schedule_semantic_refresh()
     return True
 
 
@@ -379,7 +406,9 @@ def main():
     args = sys.argv[1:]
     if args and args[0] == "--":
         args = args[1:]
+    global server_stdin
     child = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    server_stdin = child.stdin
 
     def pump_server_output():
         while True:
@@ -402,10 +431,11 @@ def main():
                     if "&nbsp;" in json.dumps(msg.get("result"), ensure_ascii=False):
                         msg["result"] = replace_in_strings(msg.get("result"), "&nbsp;", " ")
                         body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
-                if "method" not in msg and json.dumps(msg.get("id")) in semantic_request_uris:
-                    uri = semantic_request_uris.pop(json.dumps(msg.get("id")))
-                    if fix_semantic_response(msg, uri):
-                        body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
+                if "method" not in msg and (msg.get("id") in semantic_retry_ids or json.dumps(msg.get("id")) in held_semantic):
+                    msg = handle_semantic_response(msg)
+                    if msg is None:
+                        continue
+                    body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
                 if "method" not in msg and DECOMPILED_DIR.encode() in body:
                     for uri in set(file_uris(msg.get("result"))):
                         if DECOMPILED_DIR in uri and uri.endswith(".cs"):
@@ -436,14 +466,16 @@ def main():
             if msg.get("method") == "textDocument/codeAction" and "id" in msg:
                 code_action_request_ids.add(json.dumps(msg["id"]))
             if msg.get("method") in SEMANTIC_METHODS and "id" in msg:
-                uri = ((msg.get("params") or {}).get("textDocument") or {}).get("uri")
-                semantic_request_uris[json.dumps(msg["id"])] = uri
+                with held_lock:
+                    held_semantic[json.dumps(msg["id"])] = {"request": msg, "retries": 0}
+            if msg.get("method") == "$/cancelRequest" and cancel_held_semantic(msg):
+                continue
             if fix(msg):
                 body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
         except Exception as e:  # прокси не должен ронять сессию
             sys.stderr.write("roslyn-proxy: %s\n" % e)
         try:
-            write_message(child.stdin, body)
+            send_to_server(body)
         except BrokenPipeError:
             break
     try:
