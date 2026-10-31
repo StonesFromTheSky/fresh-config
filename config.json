@@ -5,7 +5,8 @@
   "editor": {
     "diagnostics_inline_text": false,
     "animations": false,
-    "smooth_scroll": false
+    "smooth_scroll": false,
+    "mouse_wheel_scroll_lines": 1
   },
   "keybindings": [
     { "key": "Left", "modifiers": ["ctrl"], "action": "prev_buffer", "when": "normal" },
