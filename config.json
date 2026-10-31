@@ -3,7 +3,9 @@
   "check_for_updates": false,
   "theme": "hc-diagnostics.json",
   "editor": {
-    "diagnostics_inline_text": false
+    "diagnostics_inline_text": false,
+    "animations": false,
+    "smooth_scroll": false
   },
   "keybindings": [
     { "key": "Left", "modifiers": ["ctrl"], "action": "prev_buffer", "when": "normal" },
