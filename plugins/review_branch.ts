@@ -2,15 +2,14 @@
  * Review Diff ветки от точки ответвления — то же, что покажет MR: изменения
  * ветки без чужих коммитов, появившихся в родительской ветке позже.
  *
- * Родитель не задан заранее (feature — от develop, hotfix — от release/*,
- * ветка от ветки…), а ищется: среди остальных веток (локальных и remote)
- * ближайшая — та, относительно которой у текущей меньше всего своих коммитов
- * (`git for-each-ref --format=%(ahead-behind:HEAD)`, git ≥ 2.41). Ветки,
- * которые уже содержат HEAD (влившие её или созданные от её вершины), и сама
- * ветка с её remote-копией (то же имя) не в счёт. Diff зависит только от точки
- * ответвления (merge-base), поэтому ветки с одной и той же точкой — один
- * вариант; первой в нём стоит ветка, из которой ветку создавали (reflog
- * «branch: Created from X»), затем develop, release/*, master/main, прочие.
+ * Родитель ищется по числу коммитов (`git for-each-ref
+ * --format=%(ahead-behind:HEAD)`, git ≥ 2.41): ближайшая из остальных веток,
+ * локальных и remote, — та, относительно которой у текущей меньше всего
+ * своих коммитов. Ветки, которые уже содержат HEAD (влившие её или созданные
+ * от её вершины), и сама ветка с её remote-копией (то же имя) не в счёт.
+ * Diff зависит только от точки ответвления (merge-base), поэтому ветки с одной
+ * и той же точкой — один вариант; первой в нём стоит та, что ушла от этой
+ * точки меньше других.
  *
  * Встроенный Review Diff: Range для `A...B` всё равно строит `git diff A..B`
  * (вершина против вершины), поэтому в Range уходит `<merge-base>..HEAD`.
@@ -20,7 +19,7 @@
  *
  * Каждый вызов git из плагина — круг через цикл редактора, 0,1–0,2 с
  * независимо от самого git. Поэтому вызовов два «слоя», внутри слоя —
- * параллельно: список веток, затем merge-base и reflog.
+ * параллельно: список веток, затем merge-base.
  *
  * Незакоммиченные правки сюда не входят — они в обычном Review Diff.
  */
@@ -35,7 +34,7 @@ interface Candidate {
   name: string; // origin/release/1.2
   plain: string; // release/1.2 — без имени remote
   sha: string; // вершина ветки
-  remote: boolean;
+  ahead: number; // коммитов в ветке, которых нет в HEAD
   behind: number; // коммитов в HEAD, которых нет в ветке
 }
 
@@ -49,23 +48,6 @@ async function git(cwd: string, args: string[]): Promise<string | null> {
 function startDir(): string {
   const path = editor.getBufferPath(editor.getActiveBufferId());
   return (path && editor.pathDirname(path)) || editor.getCwd();
-}
-
-function rank(c: Candidate, hint: string | null): number {
-  if (hint !== null && (c.name === hint || c.plain === hint)) return 0;
-  if (c.plain === "develop") return 1;
-  if (c.plain.startsWith("release/")) return 2;
-  if (c.plain === "master" || c.plain === "main") return 3;
-  return 4;
-}
-
-/** Из какой ветки создана текущая — по reflog, если он это помнит. */
-async function createdFrom(cwd: string, branch: string): Promise<string | null> {
-  const log = await git(cwd, ["reflog", "show", "--format=%gs", `refs/heads/${branch}`, "--"]);
-  const first = log?.split("\n").pop() ?? "";
-  const m = first.match(/^branch: Created from (.+)$/);
-  if (!m || m[1] === "HEAD") return null;
-  return m[1].replace(/^refs\/(heads|remotes)\//, "");
 }
 
 async function review_branch(): Promise<void> {
@@ -91,37 +73,28 @@ async function review_branch(): Promise<void> {
   const candidates: Candidate[] = [];
   for (const [full, name, sha, counts] of rows) {
     if (!full || !counts) continue;
-    const behind = Number(counts.split(" ")[1]);
-    const remote = full.startsWith("refs/remotes/");
+    const [ahead, behind] = counts.split(" ").map(Number);
     const slash = name.indexOf("/");
-    const plain = remote && slash > 0 && remotes.has(name.slice(0, slash)) ? name.slice(slash + 1) : name;
+    const plain =
+      full.startsWith("refs/remotes/") && slash > 0 && remotes.has(name.slice(0, slash)) ? name.slice(slash + 1) : name;
     // refs/remotes/origin/HEAD — ссылка на ветку по умолчанию, не ветка
     if (full.endsWith("/HEAD") || behind === 0) continue;
     // Своя копия на remote — не родитель. Upstream с другим именем не
     // исключаем: при `checkout -b hotfix/x origin/release/1.2` он и есть родитель.
     if (branch && plain === branch) continue;
-    candidates.push({ name, plain, sha, remote, behind });
+    candidates.push({ name, plain, sha, ahead, behind });
   }
   if (candidates.length === 0) {
     editor.setStatus("Review Branch: no other branch to compare with");
     return;
   }
-  const order = (hint: string | null) => (a: Candidate, b: Candidate) =>
-    a.behind - b.behind ||
-    rank(a, hint) - rank(b, hint) ||
-    Number(b.remote) - Number(a.remote) ||
-    a.name.localeCompare(b.name);
-  candidates.sort(order(null));
+  candidates.sort((a, b) => a.behind - b.behind || a.ahead - b.ahead || a.name.localeCompare(b.name));
 
   // merge-base считается по вершине: develop и origin/develop на одном
   // коммите — один вызов.
   const tips = [...new Set(candidates.map((c) => c.sha))].slice(0, MAX_TIPS);
-  const [hint, ...bases] = await Promise.all([
-    branch ? createdFrom(cwd, branch) : Promise.resolve(null),
-    ...tips.map((sha) => git(cwd, ["merge-base", sha, "HEAD"])),
-  ]);
+  const bases = await Promise.all(tips.map((sha) => git(cwd, ["merge-base", sha, "HEAD"])));
   const forkOf = new Map(tips.map((sha, i) => [sha, bases[i]]));
-  candidates.sort(order(hint));
 
   // Ближайшие ветки, сгруппированные по точке ответвления.
   const groups = new Map<string, Candidate[]>();
