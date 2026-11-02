@@ -29,7 +29,11 @@
     { "key": "l", "modifiers": ["ctrl"], "action": "nav_goto_line", "when": "normal" },
     { "key": "/", "modifiers": ["alt"], "action": "nav_live_grep", "when": "normal" },
     { "key": " ", "modifiers": ["ctrl", "shift"], "action": "lsp_signature_help", "when": "normal" },
-    { "key": "v", "modifiers": ["ctrl", "shift"], "action": "md_preview", "when": "normal" }
+    { "key": "v", "modifiers": ["ctrl", "shift"], "action": "md_preview", "when": "normal" },
+
+    { "key": "g", "modifiers": ["ctrl", "shift"], "action": "start_review_diff", "when": "normal" },
+    { "key": "F7", "modifiers": [], "action": "diff_nav_next", "when": "normal" },
+    { "key": "F7", "modifiers": ["shift"], "action": "diff_nav_prev", "when": "normal" }
   ],
   "lsp": {
     "csharp": [
