@@ -33,6 +33,7 @@
     { "key": "v", "modifiers": ["ctrl", "shift"], "action": "md_preview", "when": "normal" },
 
     { "key": "g", "modifiers": ["ctrl", "shift"], "action": "start_review_diff", "when": "normal" },
+    { "key": "b", "modifiers": ["ctrl", "shift"], "action": "review_branch", "when": "normal" },
     { "key": "F7", "modifiers": [], "action": "diff_nav_next", "when": "normal" },
     { "key": "F7", "modifiers": ["shift"], "action": "diff_nav_prev", "when": "normal" }
   ],

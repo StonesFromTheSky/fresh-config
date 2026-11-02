@@ -176,6 +176,7 @@ C# — `roslyn-language-server` (сервер из VS Code, `~/.dotnet/tools`) �
 | Клавиши | Действие |
 |---|---|
 | Ctrl+Shift+G | **Review Diff**: все изменения рабочего дерева (staged, unstaged, untracked) одним буфером — своя привязка |
+| Ctrl+Shift+B | **Review Diff: Branch Since Fork** — закоммиченное на ветке с момента ответвления от родителя, как в MR: новые коммиты родителя не мешают. Родителя ищет сам: ближайшая ветка, локальная или remote (feature → `origin/develop`, hotfix → `origin/release/…`, ветка от ветки → та ветка); при равенстве первой идёт ветка из reflog «Created from», затем develop, release/*, master. Внизу список вариантов «ветка · fork SHA · N коммитов» — Enter открывает первый, ↑/↓ — другой. Remote-ветки — на момент последнего `git fetch`. В заголовке — SHA точки ответвления: `*Review <sha>..HEAD*`. Незакоммиченное — в Ctrl+Shift+G. Свой плагин `review_branch.ts` |
 | F7 / Shift+F7 (Fn+F7) | следующее / предыдущее изменение в файле, в строке состояния «Change 1/2» — своя привязка |
 
 Внутри Review Diff:
@@ -185,7 +186,7 @@ C# — `roslyn-language-server` (сервер из VS Code, `~/.dotnet/tools`) �
 - **Прочее.** `1` / `2` — единый вид / бок о бок, `c` — комментарий к строке, `?` — справка, `q` — закрыть.
 
 Только из палитры (Ctrl+T, затем название):
-- **Review Diff: Range (Commit or Branch)** — diff диапазона одним буфером: `@{u}..HEAD` — всё незапушенное против remote (на момент последнего `git fetch`; Fresh сам не фетчит), `origin/master..HEAD` — ветка без upstream, SHA — один коммит. Это diff «вершина против вершины»: если remote ушёл вперёд (`git status` — «позади N»), его новые изменения тоже попадут в diff, наоборот. Тогда — `<sha>..HEAD`, где sha = `git merge-base @{u} HEAD`, или сначала `git pull --rebase`. `A...B` в 0.5.4 не помогает: Fresh считает его как `A..B`. **Review Diff: Stash** — stash;
+- **Review Diff: Range (Commit or Branch)** — diff диапазона одним буфером: `@{u}..HEAD` — всё незапушенное против remote (на момент последнего `git fetch`; Fresh сам не фетчит), `origin/master..HEAD` — ветка без upstream, SHA — один коммит. Это diff «вершина против вершины»: если remote ушёл вперёд (`git status` — «позади N»), его новые изменения тоже попадут в diff, наоборот. Тогда — `<sha>..HEAD`, где sha = `git merge-base @{u} HEAD`, или сначала `git pull --rebase`. `A...B` в 0.5.4 не помогает: Fresh считает его как `A..B`. Ветка от точки ответвления — Ctrl+Shift+B, её он считает сам. **Review Diff: Stash** — stash;
 - **Git Log: PR Branch** — список коммитов `база..HEAD` (база `@{u}` — только незапушенные коммиты, даже если remote ушёл вперёд), справа `git show` выбранного коммита;
 - **Side-by-Side Diff** — текущий файл против HEAD бок о бок;
 - **Git Log** / **Git Log: Current File** — история с diff выбранного коммита справа;

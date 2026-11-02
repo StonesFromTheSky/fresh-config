@@ -13,6 +13,7 @@
   - `error_lens.ts` — текст ошибок (только Error) у правого края строки;
   - `new_folder.ts` — команда `New Folder`: создать папку без проводника;
   - `md_preview.ts` — `.md` в просмотрщике cmux (Ctrl+Shift+V), после открытия буфер автосохраняется;
+  - `review_branch.ts` — Review Diff ветки от точки ответвления от родительской ветки (находит сам), как в MR (Ctrl+Shift+B; нужен git 2.41+);
   - `csharp_decompiled.ts` — декомпиляция для `csharp-ls` (запасной сервер).
 - `themes/hc-diagnostics.json` — тема на основе `high-contrast`: цвета диагностики, комментариев, строк, полей.
 - `types/`, `tsconfig.json` — типы API плагинов, создаёт сам Fresh. После обновления Fresh `git diff types/` показывает изменения API.
