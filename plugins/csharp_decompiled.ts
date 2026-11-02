@@ -51,22 +51,22 @@ editor.on("lsp_open_external_uri", async (data: LspOpenExternalUriData) => {
   if (data.scheme !== SCHEME) return;
 
   if (editor.getAuthorityLabel() !== "") {
-    editor.setStatus("csharp-decompiled: поддерживается только локальная работа");
+    editor.setStatus("csharp-decompiled: only local sessions are supported");
     return;
   }
 
-  editor.setStatus("csharp-decompiled: декомпиляция…");
+  editor.setStatus("csharp-decompiled: decompiling…");
   let meta: CSharpMetadata | null = null;
   try {
     meta = (await editor.sendLspRequest(data.language || "csharp", "csharp/metadata", {
       textDocument: { uri: data.uri },
     })) as CSharpMetadata | null;
   } catch (e) {
-    editor.setStatus(`csharp-decompiled: ошибка csharp/metadata: ${e}`);
+    editor.setStatus(`csharp-decompiled: csharp/metadata failed: ${e}`);
     return;
   }
   if (!meta || typeof meta.source !== "string") {
-    editor.setStatus(`csharp-decompiled: сервер не вернул исходник для ${data.uri}`);
+    editor.setStatus(`csharp-decompiled: the server returned no source for ${data.uri}`);
     return;
   }
 
@@ -74,17 +74,17 @@ editor.on("lsp_open_external_uri", async (data: LspOpenExternalUriData) => {
   editor.createDir(editor.localPath(dir));
   const path = `${dir}/${fileNameFromUri(data.uri)}`;
   if (!editor.writeFile(editor.localPath(path), meta.source)) {
-    editor.setStatus(`csharp-decompiled: не удалось записать ${path}`);
+    editor.setStatus(`csharp-decompiled: could not write ${path}`);
     return;
   }
 
   // LSP-позиции с 0, openFile — с 1.
   if (!editor.openFile(path, data.line + 1, data.character + 1)) {
-    editor.setStatus(`csharp-decompiled: не удалось открыть ${path}`);
+    editor.setStatus(`csharp-decompiled: could not open ${path}`);
     return;
   }
   editor.markFileReadOnly(path);
-  editor.setStatus(`${meta.symbolName || "символ"} — ${meta.assemblyName || "сборка"} (декомпилировано)`);
+  editor.setStatus(`${meta.symbolName || "symbol"} — ${meta.assemblyName || "assembly"} (decompiled)`);
 });
 
 editor.debug("csharp-decompiled: plugin loaded");

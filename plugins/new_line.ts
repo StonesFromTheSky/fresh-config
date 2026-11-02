@@ -30,7 +30,7 @@ function insert_line_above(): void {
 
 registerHandler("insert_line_below", insert_line_below);
 registerHandler("insert_line_above", insert_line_above);
-editor.registerCommand("Insert Line Below", "Новая строка ниже текущей", "insert_line_below");
-editor.registerCommand("Insert Line Above", "Новая строка выше текущей", "insert_line_above");
+editor.registerCommand("Insert Line Below", "Insert a new line below the current one", "insert_line_below");
+editor.registerCommand("Insert Line Above", "Insert a new line above the current one", "insert_line_above");
 
 editor.debug("new-line: plugin loaded");

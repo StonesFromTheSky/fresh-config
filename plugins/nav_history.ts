@@ -77,17 +77,17 @@ function step(from: Loc[], to: Loc[], emptyMessage: string): void {
 }
 
 function nav_back(): void {
-  step(back, fwd, "История переходов: назад некуда");
+  step(back, fwd, "Navigation history: nothing to go back to");
 }
 
 function nav_forward(): void {
-  step(fwd, back, "История переходов: вперёд некуда");
+  step(fwd, back, "Navigation history: nothing to go forward to");
 }
 
 registerHandler("nav_back", nav_back);
 registerHandler("nav_forward", nav_forward);
-editor.registerCommand("Nav: Back", "Назад по истории осмысленных переходов", "nav_back");
-editor.registerCommand("Nav: Forward", "Вперёд по истории осмысленных переходов", "nav_forward");
+editor.registerCommand("Nav: Back", "Go back through meaningful jumps", "nav_back");
+editor.registerCommand("Nav: Forward", "Go forward through meaningful jumps", "nav_forward");
 
 // Обёртки: запомнить место и выполнить исходное действие.
 // У каждого плагина своё JS-окружение. Какому плагину отдать действие из
@@ -124,12 +124,12 @@ registerHandler("nav_find_references", nav_find_references);
 registerHandler("nav_goto_symbol", nav_goto_symbol);
 registerHandler("nav_goto_line", nav_goto_line);
 registerHandler("nav_live_grep", nav_live_grep);
-editor.registerCommand("Nav: Go to Definition", "Перейти к определению и запомнить место", "nav_goto_definition");
-editor.registerCommand("Nav: Go to Implementation", "Перейти к реализации и запомнить место", "nav_goto_implementation");
-editor.registerCommand("Nav: Find References", "Найти использования и запомнить место", "nav_find_references");
-editor.registerCommand("Nav: Go to Symbol", "Структура файла с запоминанием места", "nav_goto_symbol");
-editor.registerCommand("Nav: Go to Line", "Перейти к строке и запомнить место", "nav_goto_line");
-editor.registerCommand("Nav: Live Grep", "Поиск по проекту с запоминанием места", "nav_live_grep");
+editor.registerCommand("Nav: Go to Definition", "Go to definition, remembering the current place", "nav_goto_definition");
+editor.registerCommand("Nav: Go to Implementation", "Go to implementation, remembering the current place", "nav_goto_implementation");
+editor.registerCommand("Nav: Find References", "Find references, remembering the current place", "nav_find_references");
+editor.registerCommand("Nav: Go to Symbol", "File structure, remembering the current place", "nav_goto_symbol");
+editor.registerCommand("Nav: Go to Line", "Go to line, remembering the current place", "nav_goto_line");
+editor.registerCommand("Nav: Live Grep", "Search the project, remembering the current place", "nav_live_grep");
 
 editor.on("cursor_moved", (data) => {
   lastPos.set(data.buffer_id, { position: data.new_position, line: data.line });

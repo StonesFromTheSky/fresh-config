@@ -1,5 +1,6 @@
 {
   "active_keybinding_map": "macos",
+  "locale": "en",
   "check_for_updates": false,
   "theme": "hc-diagnostics.json",
   "editor": {

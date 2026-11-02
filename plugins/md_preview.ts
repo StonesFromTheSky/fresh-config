@@ -33,7 +33,7 @@ async function md_preview(): Promise<void> {
   const bufferId = editor.getActiveBufferId();
   const path = editor.getBufferPath(bufferId);
   if (!path || !/\.(md|markdown)$/i.test(path)) {
-    editor.setStatus("Markdown Preview: текущий файл не .md");
+    editor.setStatus("Markdown Preview: the current file is not .md");
     return;
   }
   // Превью должно сразу показать то, что в буфере, а не на диске
@@ -59,6 +59,6 @@ editor.on("buffer_closed", (data) => {
 
 registerHandler("md_preview", md_preview);
 registerHandler("md_preview_save", md_preview_save);
-editor.registerCommand("Markdown Preview", "Открыть текущий .md в просмотрщике cmux", "md_preview");
+editor.registerCommand("Markdown Preview", "Open the current .md in the cmux viewer", "md_preview");
 
 editor.debug("md-preview: plugin loaded");
